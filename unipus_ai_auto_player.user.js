@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         U校园AI自动刷时长工具
-// @version      5.0.5
+// @version      5.0.6
 // @description  新视野大学英语自动识别目录、自动翻页、分配课时,高效刷课工具
 // @author       uxudjs
 // @match        https://ucontent.unipus.cn/*
@@ -722,6 +722,93 @@ function addLog(message, isCountdown = false) {
   log.scrollTop = log.scrollHeight;
 }
 
+// 反馈弹窗：下载页面源代码 + 提交 Issue
+function showFeedbackPopup(title) {
+  // 防重复：移除已有弹窗
+  var existing = document.getElementById('unipus-feedback-overlay');
+  if (existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'unipus-feedback-overlay';
+  overlay.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;' +
+    'background:rgba(0,0,0,0.5);z-index:100001;' +
+    'display:flex;align-items:center;justify-content:center;';
+
+  var card = document.createElement('div');
+  card.style.cssText =
+    'background:#fff;border-radius:16px;width:360px;max-width:90vw;' +
+    'box-shadow:0 8px 32px rgba(0,0,0,0.3);padding:24px;position:relative;';
+
+  // 关闭按钮
+  var closeBtn = document.createElement('span');
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText =
+    'position:absolute;top:12px;right:16px;font-size:18px;color:#999;' +
+    'cursor:pointer;line-height:1;';
+  closeBtn.addEventListener('click', function () { overlay.remove(); });
+
+  // 标题
+  var titleEl = document.createElement('div');
+  titleEl.style.cssText =
+    'font-size:18px;font-weight:bold;color:#333;margin-bottom:8px;text-align:center;';
+  titleEl.textContent = '⚠️ ' + title;
+
+  // 说明
+  var desc = document.createElement('div');
+  desc.style.cssText =
+    'font-size:13px;color:#666;margin-bottom:20px;text-align:center;line-height:1.6;';
+  desc.textContent = '请下载页面源代码并提交到 GitHub Issue，帮助作者适配此页面';
+
+  // 按钮容器
+  var btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:10px;';
+
+  // 下载按钮
+  var downloadBtn = document.createElement('button');
+  downloadBtn.textContent = '📥 下载页面源代码';
+  downloadBtn.style.cssText =
+    'flex:1;padding:12px;background:linear-gradient(135deg,#0ea5e9 0%,#10b981 100%);' +
+    'color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;';
+  downloadBtn.addEventListener('click', function () {
+    var html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    var blob = new Blob([html], { type: 'text/html;charset=UTF-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'unipus-page-source-' + Date.now() + '.html';
+    a.click();
+    URL.revokeObjectURL(url);
+    addLog('✅ 页面源代码已下载');
+  });
+
+  // Issue 按钮
+  var issueBtn = document.createElement('button');
+  issueBtn.textContent = '🐛 提交 Issue';
+  issueBtn.style.cssText =
+    'flex:1;padding:12px;background:#333;color:#fff;border:none;' +
+    'border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;';
+  issueBtn.addEventListener('click', function () {
+    window.open('https://github.com/uxudjs/UnipusAIAutoPlayer/issues/new', '_blank');
+  });
+
+  btns.appendChild(downloadBtn);
+  btns.appendChild(issueBtn);
+
+  card.appendChild(closeBtn);
+  card.appendChild(titleEl);
+  card.appendChild(desc);
+  card.appendChild(btns);
+  overlay.appendChild(card);
+
+  // 点击遮罩关闭
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  document.body.appendChild(overlay);
+}
+
 function addPauseLog(message) {
   const log = document.getElementById('unipus-log');
   if (!log) return;
@@ -791,7 +878,7 @@ function createControlPanel() {
   const mkEl = (tag, style = '') => { const el = document.createElement(tag); el.style.cssText = style; return el; };
 
   let title = mkDiv('font-size:18px;font-weight:bold;color:#fff;margin-bottom:8px;text-align:center;');
-  title.innerHTML = '📚 U校园AI自动刷时长工具';
+  title.innerHTML = '📚 U校园AI自动刷时长工具 <span style="font-size:12px;opacity:0.7;">v5.0.6</span>';
 
   let authorInfo = mkDiv('display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;padding-bottom:2px;');
   let authorText = mkEl('p', 'margin:0;font-size:12px;color:rgba(255,255,255,0.9);');
@@ -800,6 +887,14 @@ function createControlPanel() {
   githubLink.href = 'https://github.com/uxudjs/UnipusAIAutoPlayer';
   githubLink.textContent = '📦 GitHub仓库';
   authorInfo.appendChild(authorText);
+  // 反馈按钮
+  var feedbackBtn = mkEl('a', 'font-size:12px;color:#fff;cursor:pointer;margin-right:10px;');
+  feedbackBtn.textContent = '🛠️ 反馈';
+  feedbackBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    showFeedbackPopup('反馈问题');
+  });
+  authorInfo.appendChild(feedbackBtn);
   authorInfo.appendChild(githubLink);
 
   let contentBox = mkDiv('background:#fff;border-radius:12px;padding:16px;');
@@ -869,6 +964,7 @@ function createControlPanel() {
       menuSelect.value = '0';
       _lastMenuHash = '';
       if (startBtn) { startBtn.disabled = true; startBtn.style.opacity = '0.5'; startBtn.style.cursor = 'not-allowed'; }
+      if (_menuDetectionDone) { showFeedbackPopup('目录识别失败'); }
       return;
     }
     const newHash = JSON.stringify(list.map(function (n) { return n.unit + '|' + n.section + '|' + n.micro; }));
@@ -981,7 +1077,10 @@ function createControlPanel() {
           populateMenuSelect(list);
         }
       },
-      () => addLog('⚠️ 目录检测超时，请展开左侧目录后点击🔄重试')
+      () => {
+        addLog('⚠️ 目录检测超时');
+        showFeedbackPopup('目录识别失败');
+      }
     );
     watchForMenu(() => {
       if (_menuDetectionDone) return;
@@ -1057,7 +1156,8 @@ function createControlPanel() {
         menuTrigger.textContent = menuList[restoredIdx] ? menuList[restoredIdx].micro : '';
         addLog('✅ 已重新识别目录，请重新点击开始刷课');
       } else {
-        addLog('⚠️ 未识别到目录，请先展开左侧目录后重试');
+        addLog('⚠️ 未识别到目录');
+        showFeedbackPopup('目录识别失败');
       }
       return;
     }
