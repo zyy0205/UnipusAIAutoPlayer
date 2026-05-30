@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         U校园AI自动刷时长工具
-// @version      5.0.6
+// @version      5.1.0
 // @description  新视野大学英语自动识别目录、自动翻页、分配课时,高效刷课工具
 // @author       uxudjs
 // @match        https://ucontent.unipus.cn/*
@@ -99,6 +99,7 @@ function getMenuList(doc) {
     '[role="tree"]',
     '.ant-menu',
     '[role="menu"]',
+    '.menuRightTabContent',
   ];
 
   let menuContainer = null;
@@ -325,6 +326,33 @@ function getMenuList(doc) {
     }
   } catch (e) {}
 
+  // Strategy 5: u3menu CSS-module 结构 (AI 版课本)
+  try {
+    const menuLists = menuContainer.querySelectorAll('ul.menu--u3menu-3Xu4h');
+    if (menuLists.length > 0) {
+      const seen = new Set();
+      menuLists.forEach((ul) => {
+        let curUnit = '';
+        const unitLi = ul.querySelector('li.unit');
+        if (unitLi) {
+          const titleEl = unitLi.querySelector('.menu--nolinkText-1gzNf');
+          if (titleEl) curUnit = pickName(titleEl);
+        }
+        ul.querySelectorAll('li.group.courseware').forEach((li) => {
+          const link = li.querySelector('span.name a');
+          if (!link) return;
+          const name = pickName(link);
+          if (!name) return;
+          const key = curUnit + '|' + name;
+          if (seen.has(key)) return;
+          seen.add(key);
+          pushNode(curUnit, '', name, link);
+        });
+      });
+    }
+  } catch (e) {}
+  if (nodes.length > 0) return nodes;
+
   return Array.isArray(nodes) ? nodes : [];
 }
 
@@ -438,7 +466,8 @@ if (IS_IFRAME || IS_IPUB) {
     let fired = false;
     const menuSelectors =
       '.pc-slider-menu-unit, .pc-slider-menu-node, .pc-slider-menu-micro, ' +
-      '.ant-tree-treenode, [role="treeitem"], [class*="tree-menu"], [role="menuitem"]';
+      '.ant-tree-treenode, [role="treeitem"], [class*="tree-menu"], [role="menuitem"], ' +
+      '.menu--u3menu-3Xu4h';
     const ob = new MutationObserver(() => {
       if (fired) return;
       if (scanAndSend()) {
@@ -651,7 +680,8 @@ function watchForMenu(callback, timeout) {
   let timer, fired = false;
   const menuSelectors =
     '.pc-slider-menu-unit, .pc-slider-menu-node, .pc-slider-menu-micro, ' +
-    '.ant-tree-treenode, [role="treeitem"], [class*="tree-menu"], [role="menuitem"]';
+    '.ant-tree-treenode, [role="treeitem"], [class*="tree-menu"], [role="menuitem"], ' +
+    '.menu--u3menu-3Xu4h';
 
   const observer = new MutationObserver((mutations) => {
     if (fired) return;
@@ -689,6 +719,11 @@ function getTabs() {
     if (nameElem && tab.classList.contains('tab')) {
       tabs.push({ name: nameElem.title || nameElem.innerText, element: nameElem });
     }
+  });
+  // Fallback: AI 版课本 TabsBox (Video/Exercise)
+  document.querySelectorAll('#header ul.TabsBox a.topTab').forEach((link) => {
+    const name = pickName(link);
+    if (name) tabs.push({ name, element: link });
   });
   return tabs;
 }
@@ -878,7 +913,7 @@ function createControlPanel() {
   const mkEl = (tag, style = '') => { const el = document.createElement(tag); el.style.cssText = style; return el; };
 
   let title = mkDiv('font-size:18px;font-weight:bold;color:#fff;margin-bottom:8px;text-align:center;');
-  title.innerHTML = '📚 U校园AI自动刷时长工具 <span style="font-size:12px;opacity:0.7;">v5.0.6</span>';
+  title.innerHTML = '📚 U校园AI自动刷时长工具 <span style="font-size:12px;opacity:0.7;">v5.1.0</span>';
 
   let authorInfo = mkDiv('display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;padding-bottom:2px;');
   let authorText = mkEl('p', 'margin:0;font-size:12px;color:rgba(255,255,255,0.9);');
