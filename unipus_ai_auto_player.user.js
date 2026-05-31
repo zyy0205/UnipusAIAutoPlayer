@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         U校园AI自动刷时长工具
-// @version      5.2.5
+// @version      5.2.6
 // @description  新视野大学英语自动识别目录、自动翻页、分配课时,高效刷课工具
 // @author       uxudjs
 // @match        https://ucontent.unipus.cn/*
@@ -543,6 +543,7 @@ function playVideo() {
   const video = findVideoElement();
   if (!video) return;
   if (!video.paused) return;
+  if (video.ended) return;
 
   // 移除平台禁用的控件类，恢复播放能力
   const vjsContainer = video.closest('.video-js');
@@ -602,9 +603,10 @@ function isVideoPlaying(video) {
 function waitForVideoEnd() {
   return new Promise((resolve) => {
     const video = findVideoElement();
-    if (!video) { resolve(); return; }
-    if (video.ended) { resolve(); return; }
+    if (!video) { resolve(false); return; }
+    if (video.ended) { resolve(false); return; }
     let done = false;
+    let videoPlayed = false;
     const finish = () => {
       if (done) return;
       done = true;
@@ -614,9 +616,9 @@ function waitForVideoEnd() {
         window._uaiPlayKeepAlive = null;
       }
       video.removeEventListener('ended', onEnded);
-      resolve();
+      resolve(videoPlayed);
     };
-    const onEnded = () => finish();
+    const onEnded = () => { videoPlayed = true; finish(); };
     video.addEventListener('ended', onEnded);
     // 定期检查脚本暂停/重启状态，以及视频是否被移除
     const stateCheck = setInterval(() => {
@@ -627,7 +629,7 @@ function waitForVideoEnd() {
     setTimeout(function () {
       if (!done) playVideo();
     }, 800);
-    setTimeout(finish, 30 * 60 * 1000);
+    setTimeout(function () { videoPlayed = true; finish(); }, 30 * 60 * 1000);
   });
 }
 
@@ -1037,7 +1039,7 @@ function createControlPanel() {
   const mkEl = (tag, style = '') => { const el = document.createElement(tag); el.style.cssText = style; return el; };
 
   let title = mkDiv('font-size:18px;font-weight:bold;color:#fff;margin-bottom:8px;text-align:center;');
-  title.innerHTML = '📚 U校园AI自动刷时长工具 <span style="font-size:12px;opacity:0.7;">v5.2.5</span>';
+  title.innerHTML = '📚 U校园AI自动刷时长工具 <span style="font-size:12px;opacity:0.7;">v5.2.6</span>';
 
   let authorInfo = mkDiv('display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;padding-bottom:2px;');
   let authorText = mkEl('p', 'margin:0;font-size:12px;color:rgba(255,255,255,0.9);');
@@ -1422,7 +1424,11 @@ function createControlPanel() {
             if (shouldRestart) break;
             if (videoPlaybackEnabled) {
               addLog('🎬 等待视频播放结束...');
-              await waitForVideoEnd();
+              const videoPlayed = await waitForVideoEnd();
+              if (videoPlayed) {
+                addLog('🎬 视频播放完成，跳过本页倒计时');
+                continue;
+              }
             }
             clickIKnow();
             const tabTasks = getTasks();
@@ -1509,7 +1515,7 @@ async function waitTime(seconds, taskName) {
         addLog('🎬 视频播放结束，恢复倒计时');
         continue;
       }
-      if (video && video.paused) {
+      if (video && video.paused && !video.ended) {
         playVideo();
       }
     }
