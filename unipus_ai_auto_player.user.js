@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         U校园AI自动刷时长工具
-// @version      5.2.4
+// @version      5.2.5
 // @description  新视野大学英语自动识别目录、自动翻页、分配课时,高效刷课工具
 // @author       uxudjs
 // @match        https://ucontent.unipus.cn/*
@@ -544,30 +544,54 @@ function playVideo() {
   if (!video) return;
   if (!video.paused) return;
 
+  // 移除平台禁用的控件类，恢复播放能力
+  const vjsContainer = video.closest('.video-js');
+  if (vjsContainer) {
+    vjsContainer.classList.remove('vjs-controls-disabled');
+    vjsContainer.querySelectorAll('.vjs-controls-disabled').forEach(function (el) {
+      el.classList.remove('vjs-controls-disabled');
+    });
+  }
+
   // 先尝试静音播放（绕开浏览器自动播放限制）
   video.muted = true;
   try {
-    const promise = video.play();
+    var promise = video.play();
     if (promise) {
-      promise.then(() => {
+      promise.then(function () {
         video.muted = false;
-      }).catch(() => {});
+      }).catch(function () {});
     } else {
       video.muted = false;
     }
   } catch (e) {}
 
   // 降级：点击 Video.js 大播放按钮
-  const bigBtn = document.querySelector('.vjs-big-play-button');
+  var bigBtn = document.querySelector('.vjs-big-play-button');
   if (bigBtn) {
     try { bigBtn.click(); } catch (e) {}
   }
 
   // 再降级：点击控制栏播放按钮
-  const playBtn = document.querySelector('.vjs-play-control');
+  var playBtn = document.querySelector('.vjs-play-control');
   if (playBtn) {
     try { playBtn.click(); } catch (e) {}
   }
+
+  // 启动保活：对抗平台自动暂停
+  if (window._uaiPlayKeepAlive) clearInterval(window._uaiPlayKeepAlive);
+  window._uaiPlayKeepAlive = setInterval(function () {
+    var v = findVideoElement();
+    if (!v || v.ended || shouldRestart || !isRunning) {
+      clearInterval(window._uaiPlayKeepAlive);
+      window._uaiPlayKeepAlive = null;
+      return;
+    }
+    if (v.paused) {
+      v.muted = true;
+      try { v.play(); } catch (e) {}
+    }
+  }, 1000);
 }
 
 function isVideoPlaying(video) {
@@ -580,12 +604,15 @@ function waitForVideoEnd() {
     const video = findVideoElement();
     if (!video) { resolve(); return; }
     if (video.ended) { resolve(); return; }
-    playVideo();
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
       clearInterval(stateCheck);
+      if (window._uaiPlayKeepAlive) {
+        clearInterval(window._uaiPlayKeepAlive);
+        window._uaiPlayKeepAlive = null;
+      }
       video.removeEventListener('ended', onEnded);
       resolve();
     };
@@ -596,6 +623,10 @@ function waitForVideoEnd() {
       if (shouldRestart || !isRunning) { finish(); return; }
       if (!findVideoElement()) { finish(); return; }
     }, 1000);
+    // 延迟播放：等页面渲染稳定后再启动视频
+    setTimeout(function () {
+      if (!done) playVideo();
+    }, 800);
     setTimeout(finish, 30 * 60 * 1000);
   });
 }
@@ -1006,7 +1037,7 @@ function createControlPanel() {
   const mkEl = (tag, style = '') => { const el = document.createElement(tag); el.style.cssText = style; return el; };
 
   let title = mkDiv('font-size:18px;font-weight:bold;color:#fff;margin-bottom:8px;text-align:center;');
-  title.innerHTML = '📚 U校园AI自动刷时长工具 <span style="font-size:12px;opacity:0.7;">v5.2.4</span>';
+  title.innerHTML = '📚 U校园AI自动刷时长工具 <span style="font-size:12px;opacity:0.7;">v5.2.5</span>';
 
   let authorInfo = mkDiv('display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;padding-bottom:2px;');
   let authorText = mkEl('p', 'margin:0;font-size:12px;color:rgba(255,255,255,0.9);');
@@ -1459,13 +1490,15 @@ function createControlPanel() {
 
 async function waitTime(seconds, taskName) {
   let remaining = Math.round(seconds);
+  let tick = 0;
   while (remaining > 0) {
     while (isPaused && isRunning) {
       await new Promise((r) => setTimeout(r, 500));
       if (shouldRestart) break;
     }
     if (!isRunning || isPaused || shouldRestart) break;
-    clickIKnow();
+    if (tick % 5 === 0) clickIKnow();
+    tick++;
     // 视频播放检测：播放时暂停倒计时
     if (videoPlaybackEnabled) {
       const video = findVideoElement();
